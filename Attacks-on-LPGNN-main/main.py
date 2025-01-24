@@ -31,7 +31,6 @@ class LogMode(Enum):
 #     FLIPNODES = 'flipNodes'
 #     INFERENCE = 'inference'
 
-
 def seed_everything(seed):
     random.seed(seed)
     np.random.seed(seed)
@@ -355,7 +354,7 @@ def main():
 
     # experiment args
     group_expr = init_parser.add_argument_group('experiment arguments')
-    group_expr.add_argument('-s', '--seed', type=int, default=None, help='initial random seed')
+    group_expr.add_argument('-s', '--seed', type=int, default=None, help='initial random seed') #type = the data type the command line arg should be converted. 
     group_expr.add_argument('-r', '--repeats', type=int, default=1, help="number of times the experiment is repeated")
     group_expr.add_argument('-o', '--output-dir', type=str, default='./output', help="directory to store the results")
     group_expr.add_argument('--log', type=str2bool, nargs='?', const=True, default=False, help='enable wandb logging')
