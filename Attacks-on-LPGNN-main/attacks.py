@@ -9,6 +9,7 @@ class AttackMode(Enum):
     FLIPNODES = 'flipNodes'
     INFERENCE = 'inference'
     POISON = 'poison'
+    SHADOW = "shadow"
     
 
 def prepare_data(data):

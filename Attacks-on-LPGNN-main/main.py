@@ -19,6 +19,10 @@ from utils import print_args, WandbLogger, add_parameters_as_argument, \
     measure_runtime, from_args, str2bool, Enum, EnumAction, colored_text, bootstrap
 from attacks import AttackMode, prepare_data, train_model, test_model, predict, average_feature_difference
 from sklearn.metrics.pairwise import cosine_similarity
+from shadow_attack import generateData, Train_and_Evaluate
+from sklearn.neural_network import MLPClassifier
+from sklearn import metrics
+
 
 
 class LogMode(Enum):
@@ -258,6 +262,62 @@ def run(args):
         
         
         return
+    elif attacker == AttackMode.SHADOW:
+        data = Compose([from_args(FeatureTransform, args)])(dataset.clone()) # we're only going to transform the features.
+        original_data, excluded_original_data = generateData(data.clone(), 0.8, 0.25, 0.2)
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        
+        model = from_args(NodeClassifier, args, input_dim = data.num_features, num_classes = data.num_classes) # create target model 
+        path_1 = "original_model"
+        path_2 = "shadow_model"
+        
+        Train_and_Evaluate(model, original_data, 500, 50, torch.optim.Adam(model.parameters()), device, path_1)
+        
+        
+        shadow_model = from_args(NodeClassifier, args, input_dim = data.num_features, num_classes = data.num_classes) # shadow model to replicate. 
+        shadow_data, hold_out_shadowData = generateData(data.clone(), graph_sample = 0.6, train_split = 0.7, val_split = 0.2)
+        Train_and_Evaluate(shadow_model, shadow_data, 500, 50, torch.optim.Adam(model.parameters()), device, path_2)
+        
+        shadow_model.eval()
+
+        shadow_train = shadow_model(shadow_data)[shadow_data.train_mask] # get the train 
+        shadow_test = shadow_model(hold_out_shadowData)
+
+        y_shadow_train = [1] * shadow_train.shape[0]
+        y_shadow_test = [0] * shadow_test.shape[0]
+
+        y_train_attack = y_shadow_train + y_shadow_test
+
+        shadow_train = shadow_train.detach().cpu().numpy() ## put it to cpu device. 
+        shadow_test = shadow_test.detach().cpu().numpy()
+
+        x_train_attack = np.concatenate((shadow_train,shadow_test)) 
+        original_data.to(device)
+        excluded_original_data.to(device)
+
+        target_train = shadow_model(original_data)[original_data.train_mask]
+        target_test = shadow_model(excluded_original_data)
+
+        y_target_train=[1]*target_train.shape[0]
+        y_target_test=[0]*target_test.shape[0]
+
+        target_train_copy = target_train.detach().cpu().numpy()
+        target_test_copy = target_test.detach().cpu().numpy() 
+
+        y_test_attack = y_target_train+y_target_test
+        x_test_attack = np.concatenate((target_train_copy, target_test_copy)) 
+        
+        clf = MLPClassifier(random_state=1, solver='adam', max_iter=300).fit(x_train_attack, y_train_attack) 
+        clf.fit(x_train_attack, y_train_attack)
+        
+        os.remove(path_1)
+        os.remove(path_2) # delete after using it. 
+        
+        y_score = clf.predict(x_test_attack) 
+        print(metrics.classification_report(y_test_attack, y_score, labels=range(2))) 
+        print(metrics.roc_auc_score(y_test_attack, y_score)) 
+    
+    
     progbar = tqdm(range(args.repeats), file=sys.stdout)
     for version in progbar: ### This is the place for default training and evaluating our GNN 
         if args.log and args.log_mode == LogMode.INDIVIDUAL:
