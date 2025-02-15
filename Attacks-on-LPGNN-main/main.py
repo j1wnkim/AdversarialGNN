@@ -30,10 +30,6 @@ class LogMode(Enum):
     COLLECTIVE = 'collective'
 
     
-# class AttackMode(Enum):
-#     ADDNODES = 'addNodes'
-#     FLIPNODES = 'flipNodes'
-#     INFERENCE = 'inference'
 
 def seed_everything(seed):
     random.seed(seed)
@@ -91,7 +87,6 @@ def run(args):
         print(f"The privacy budget is {x_eps}\n")
         print(f"The privacy budget per feature is {float(x_eps)/d}\n")
 #       print(n,d)
-        
         
         correct_preds = 0
         total_preds = 0
@@ -263,19 +258,21 @@ def run(args):
         
         return
     elif attacker == AttackMode.SHADOW:
-        data = Compose([from_args(FeatureTransform, args)])(dataset.clone()) # we're only going to transform the features.
-        original_data, excluded_original_data = generateData(data.clone(), 0.8, 0.25, 0.2)
+        dataset, data = dataset 
+        data = Compose([from_args(FeatureTransform, args)])(data.clone()) # we're only going to transform the features.
+        print(data)
+        original_data, excluded_original_data = generateData(data, 0.8, 0.25, 0.2)
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
-        model = from_args(NodeClassifier, args, input_dim = data.num_features, num_classes = data.num_classes) # create target model 
+        model = from_args(NodeClassifier, args, input_dim = dataset.num_features, num_classes = dataset.num_classes) # create target model 
         path_1 = "original_model"
         path_2 = "shadow_model"
         
         Train_and_Evaluate(model, original_data, 500, 50, torch.optim.Adam(model.parameters()), device, path_1)
         
         
-        shadow_model = from_args(NodeClassifier, args, input_dim = data.num_features, num_classes = data.num_classes) # shadow model to replicate. 
-        shadow_data, hold_out_shadowData = generateData(data.clone(), graph_sample = 0.6, train_split = 0.7, val_split = 0.2)
+        shadow_model = from_args(NodeClassifier, args, input_dim = original_data.num_features, num_classes = data.num_classes) # shadow model to replicate. 
+        shadow_data, hold_out_shadowData = generateData(data, graph_sample = 0.6, train_split = 0.7, val_split = 0.2)
         Train_and_Evaluate(shadow_model, shadow_data, 500, 50, torch.optim.Adam(model.parameters()), device, path_2)
         
         shadow_model.eval()
@@ -298,8 +295,8 @@ def run(args):
         target_train = shadow_model(original_data)[original_data.train_mask]
         target_test = shadow_model(excluded_original_data)
 
-        y_target_train=[1]*target_train.shape[0]
-        y_target_test=[0]*target_test.shape[0]
+        y_target_train = [1]*target_train.shape[0]
+        y_target_test = [0]*target_test.shape[0]
 
         target_train_copy = target_train.detach().cpu().numpy()
         target_test_copy = target_test.detach().cpu().numpy() 

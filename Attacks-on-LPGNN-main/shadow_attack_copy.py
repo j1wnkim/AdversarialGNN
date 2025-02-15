@@ -1,6 +1,17 @@
 from torch_geometric import datasets
 import torch 
 from torch_geometric.utils import subgraph
+
+dataset = datasets.Planetoid(root = "/home/jik19004/FilesToRun/AdversarialGNN/MIA/blackbox/Shadow", name = "CiteSeer")
+data = dataset[0]
+
+labels = data.y
+nodes = torch.arange(data.num_nodes)  # Indices of all nodes
+
+
+
+
+
 import random 
 from torch.nn.functional import one_hot 
 
@@ -15,6 +26,7 @@ def generateData(data, graph_sample:float, train_split:float, val_split:float): 
     sampled_nodes = nodes[randomPerm[:num_sampled]]
     excluded_nodes = nodes[randomPerm[num_sampled:]] # take the excluded nodes. 
     
+
     subgraph_edge_index, subgraph_edge_mask = subgraph(
         sampled_nodes, data.edge_index, relabel_nodes=True
     )
@@ -61,6 +73,14 @@ def generateData(data, graph_sample:float, train_split:float, val_split:float): 
     return subgraph_data, excluded_data 
 
 
+# In[3]:
+
+
+subgraph_data, excluded_original_nodes = generateData(data, 0.8, 0.25, 0.2)
+
+
+# In[4]:
+
 
 from torch_geometric.nn import SAGEConv 
 import torch.nn.functional as F 
@@ -86,6 +106,7 @@ class GraphSAGE(torch.nn.Module):
          
 
 # Set up the device
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
 # In[5]:
@@ -147,6 +168,38 @@ def Train_and_Evaluate(model, data, epochs, callback, optimizer, device, path = 
             return train_losses, val_losses
 
 
+# In[6]:
+
+
+from torch.optim import Adam
+
+model = GraphSAGE(in_channels = 3703, hidden_channels = 32, out_channels = 6, dropout = 0.25)
+device = torch.device("cuda")
+train_losses, val_losses = Train_and_Evaluate(model, subgraph_data, 500, 50, Adam(model.parameters()), device)
+
+
+# In[7]:
+
+
+print(torch.__version__)
+
+
+# In[8]:
+
+
+import matplotlib.pyplot as plt 
+
+fig = plt.figure(figsize = [5,6])
+axes = fig.add_axes(rect = [0,0,2.2,0.8])
+axes.plot([i for i in range(len(train_losses))], train_losses, label = "train_loss")
+axes.plot([i for i in range(len(val_losses))], val_losses, label = "val_loss")
+plt.xlabel("Epochs")
+plt.ylabel("Loss (Cross Entropy)")
+axes.legend()
+
+
+# In[9]:
+
 
 def Evaluate_Test(model, data, test_mask = True):
     model.eval()
@@ -162,6 +215,17 @@ def Evaluate_Test(model, data, test_mask = True):
     
     print("Test Accuracy: ", ((actual_val == outputs_label).sum())/outputs_label.shape[0])
 
+
+# In[10]:
+
+
+model = torch.load(r"/home/jik19004/FilesToRun/AdversarialGNN/MIA/blackbox/Shadow/GraphSage_Citeseer")
+model.eval() # set it to eval mode. 
+outputs = model(subgraph_data)[subgraph_data.test_mask]
+outputs_label = torch.argmax(outputs, dim = 1) 
+actual_val = torch.argmax(subgraph_data.y[subgraph_data.test_mask], dim = 1)  # take the actual y 
+
+print("Test Accuracy: ", ((actual_val == outputs_label).sum())/outputs_label.shape[0])
 
 
 # # **Shadow Model**
@@ -186,4 +250,94 @@ class shadowClassifier(torch.nn.Module):
         
         return x ## for the classification. 
         
+
+
+# In[12]:
+
+
+shadow_data, hold_out_shadowData = generateData(data, graph_sample = 0.6, train_split = 0.7, val_split = 0.2) # generate the shadow data. 
+shadow_model = GraphSAGE(in_channels = 3703, hidden_channels = 32, out_channels = 6, dropout = 0.25)
+
+train_losses, val_losses = Train_and_Evaluate(shadow_model, shadow_data, 500, 50, torch.optim.Adam(shadow_model.parameters()), device, "ShadowSage_Citeseer")
+
+
+# In[13]:
+
+
+model = torch.load("ShadowSage_Citeseer")
+Evaluate_Test(model, shadow_data)
+
+
+# In[14]:
+
+
+fig = plt.figure(figsize = [4,5])
+axes = fig.add_axes(rect = [0,0,1.8,0.65])
+axes.plot([i for i in range(len(train_losses))], train_losses, label = "train_loss")
+axes.plot([i for i in range(len(val_losses))], val_losses, label = "val_loss")
+plt.xlabel("Epochs")
+plt.ylabel("Loss (Cross Entropy)")
+axes.legend()
+
+
+# In[15]:
+
+
+shadow_model = torch.load("/home/jik19004/FilesToRun/AdversarialGNN/MIA/blackbox/Shadow/ShadowSage_Citeseer")
+hold_out_shadowData.to(device)
+Evaluate_Test(model, hold_out_shadowData, False)
+
+
+# In[16]:
+
+
+shadow_model.eval()
+
+shadow_train = shadow_model(shadow_data)[shadow_data.train_mask] # get the train 
+shadow_test = shadow_model(hold_out_shadowData)
+
+y_shadow_train = [1] * shadow_train.shape[0]
+y_shadow_test = [0] * shadow_test.shape[0]
+
+y_train_attack = y_shadow_train + y_shadow_test
+
+shadow_train = shadow_train.detach().cpu().numpy() ## put it to cpu device. 
+shadow_test = shadow_test.detach().cpu().numpy()
+
+x_train_attack = np.concatenate((shadow_train,shadow_test)) 
+
+
+# In[17]:
+
+
+subgraph_data.to(device)
+excluded_original_nodes.to(device)
+
+target_train = shadow_model(subgraph_data)[subgraph_data.train_mask]
+target_test = shadow_model(excluded_original_nodes)
+
+y_target_train=[1]*target_train.shape[0]
+y_target_test=[0]*target_test.shape[0]
+
+
+target_train_copy = target_train.detach().cpu().numpy()
+target_test_copy = target_test.detach().cpu().numpy() 
+
+y_test_attack = y_target_train+y_target_test
+x_test_attack = np.concatenate((target_train_copy, target_test_copy)) 
+print(x_train_attack.shape)
+
+
+# In[19]:
+
+
+from sklearn.neural_network import MLPClassifier
+from sklearn import metrics
+clf = MLPClassifier(random_state=1, solver='adam', max_iter=300).fit(x_train_attack, y_train_attack) 
+clf.fit(x_train_attack, y_train_attack) 
+print("Test set score: %f" % clf.score(x_test_attack, y_test_attack)) 
+
+y_score = clf.predict(x_test_attack) 
+print(metrics.classification_report(y_test_attack, y_score, labels=range(2))) 
+print(metrics.roc_auc_score(y_test_attack, y_score)) 
 

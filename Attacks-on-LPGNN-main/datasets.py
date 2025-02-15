@@ -214,6 +214,9 @@ def load_dataset(
             data = Normalize(low, high)(data)
 
         return data
+    if attack and attack_type == AttackMode.SHADOW: 
+        return data, data[0] # just return the data itself.
+    
     
     if attack and attack_type == AttackMode.ADDNODES:
             
