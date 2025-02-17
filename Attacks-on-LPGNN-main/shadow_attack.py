@@ -5,7 +5,7 @@ import random
 from torch.nn.functional import one_hot 
 
 def generateData(data, graph_sample:float, train_split:float, val_split:float): ## Trivially test would also be part of the split. 
-    labels = data.y
+    #labels = data.y
     nodes = torch.arange(data.num_nodes)  # Indices of all nodes
 
     torch.manual_seed(101)  # Set random seed for reproducibility

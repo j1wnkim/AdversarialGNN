@@ -136,7 +136,7 @@ class NodeClassifier(torch.nn.Module):
         self.forward_correction = forward_correction
 
     def forward(self, data):
-        x, adj_t = data.x, data.adj_t
+        x, adj_t = data.x, data.adj_t    ## original was data.adj_t 
         x = self.x_prop(x, adj_t)
         x = self.gnn(x, adj_t)
 
@@ -152,7 +152,7 @@ class NodeClassifier(torch.nn.Module):
         if self.cached_yt is None:
             yp = data.y.float()
             yp[data.test_mask] = 0  # to avoid using test labels
-            self.cached_yt = self.y_prop(yp, data.adj_t)  # y~
+            self.cached_yt = self.y_prop(yp, data.adj_t)  # y~ again original was data.adj_t
 
         loss = self.cross_entropy_loss(p_y=p_yt_x[data.train_mask], y=self.cached_yt[data.train_mask], weighted=False)
 

@@ -56,6 +56,7 @@ def run(args):
     run_metrics = {}
     run_id = str(uuid.uuid1())
 
+    
     logger = None
     if args.log and args.log_mode == LogMode.COLLECTIVE:
         logger = WandbLogger(project=args.project_name, config=args, enabled=args.log, reinit=False, group=run_id)
@@ -258,9 +259,8 @@ def run(args):
         
         return
     elif attacker == AttackMode.SHADOW:
-        dataset, data = dataset 
-        data = Compose([from_args(FeatureTransform, args)])(data.clone()) # we're only going to transform the features.
-        print(data)
+        #dataset, data = dataset 
+        data = Compose([from_args(FeatureTransform, args)])(dataset) # we're only going to transform the features.
         original_data, excluded_original_data = generateData(data, 0.8, 0.25, 0.2)
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
