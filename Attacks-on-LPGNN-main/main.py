@@ -259,8 +259,8 @@ def run(args):
         
         return
     elif attacker == AttackMode.SHADOW:
-        #dataset, data = dataset 
-        data = Compose([from_args(FeatureTransform, args)])(dataset) # we're only going to transform the features.
+        dataset, data = dataset 
+        data = Compose([from_args(FeatureTransform, args)])(data) # we're only going to transform the features.
         original_data, excluded_original_data = generateData(data, 0.8, 0.25, 0.2)
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         
